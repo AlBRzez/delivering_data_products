@@ -1,0 +1,88 @@
+---
+title: "Mexico's city metro stations"
+author: "Aliza Brzezinski Rittner"
+date: "26/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = FALSE, message = FALSE)
+pacman::p_load(tidyverse, leaflet, htmltools, sf)
+```
+
+```{r get_data}
+alcaldias <- read_csv("./alcaldias.csv") #Información de datos abiertos cdmx
+
+estaciones <- read_csv("./estaciones-metro.csv")
+estaciones2 <- read_csv("./estaciones-del-metro.csv")
+
+transp <- read_csv("./sit_mapa.csv")
+
+```  
+
+
+```{r func}
+json_to_shp <- function(base) {
+        base <- 
+                base %>% 
+                mutate(
+                        geoJson = map(
+                                geo_shape, geojson::to_geojson
+                        ),
+                        shape = map(
+                                geoJson, geojsonsf::geojson_sf, expand_geometries = T
+                        )
+                ) %>% 
+                unnest(shape)
+}
+```  
+
+```{r transf}
+metro <- 
+        transp %>% 
+        filter(layer == "STC_Metro_lineas_utm14n")
+
+
+est <- 
+        estaciones2 %>% 
+        mutate(LINEA = str_remove(descriptio, "Linea ")) %>% 
+        left_join(metro %>% select(LINEA, COLOR)) %>% 
+        # rename(geo_shape = geometry) %>%
+        json_to_shp()
+     
+shape_alcaldias <- 
+        alcaldias %>% 
+        drop_na(geo_shape) %>% 
+        json_to_shp()
+
+
+```  
+
+
+```{r mapa}
+
+guia <- 
+        est %>%
+        arrange(LINEA) %>% 
+        select(COLOR, descriptio) %>% 
+        distinct()
+leaflet() %>% 
+        addProviderTiles(providers$CartoDB.Positron) %>%
+        addPolygons(data = st_as_sf(shape_alcaldias),
+                    color = "black",
+                    weight = 2,
+                    fillOpacity = 0) %>% 
+        addCircleMarkers(data = est$geometry,
+                         color = est$COLOR,
+                         radius = 2,
+                         label = sprintf("%s",
+                                         paste0(est$linea_esta))) %>% 
+        addLegend(colors = guia$COLOR,
+                  labels = guia$descriptio) %>% 
+        addControl(tags$p(tags$style("p {color: black, font-size:12px; width:q00px}"),
+                              tags$b(HTML(paste0("Mexico City's Metro lines"))),
+                              position = "topright"))
+
+```
+
+
